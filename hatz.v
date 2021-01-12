@@ -19,11 +19,6 @@ Coercion natural : nat >-> defaultNat.
 Coercion boolean : bool >-> defaultBool.
 Coercion str : string >-> defaultStr.
 
-Inductive Param :=
-  | param_n : string -> Param
-  | param_b : string -> Param
-  | param_s : string -> Param.
-
 Inductive AExp :=
   | var_a: string -> AExp
   | default_a: defaultNat -> AExp
@@ -34,8 +29,7 @@ Inductive AExp :=
   | modulo: AExp -> AExp -> AExp
   | arr_a_element: string -> AExp -> AExp
   | struct_a_member: string -> string -> AExp
-  | function_a_return: string -> list Param -> AExp.
-
+  | function_a_return: string -> AExp.
 
 Inductive BExp:=
   | true_b
@@ -53,7 +47,7 @@ Inductive BExp:=
   | neq_b: AExp -> AExp -> BExp
   | arr_b_element: string -> AExp -> BExp
   | struct_b_member: string -> string -> BExp
-  | function_b_return: string -> list Param -> BExp.
+  | function_b_return: string -> BExp.
 
 Inductive SExp :=
   | var_s : string -> SExp
@@ -61,7 +55,7 @@ Inductive SExp :=
   | str_concat: SExp -> SExp -> SExp
   | arr_s_element: string -> AExp -> SExp
   | struct_s_member: string -> string -> SExp
-  | function_s_return: string -> list Param -> SExp.
+  | function_s_return: string -> SExp.
 
 Inductive Stmt :=
   | assgn_n : string -> AExp -> Stmt
@@ -73,6 +67,7 @@ Inductive Stmt :=
   | assgn_str_n : string -> string -> AExp -> Stmt
   | assgn_str_b : string -> string -> BExp -> Stmt
   | assgn_str_s : string -> string -> SExp -> Stmt
+  | def_f: string -> Stmt -> Stmt
   | seq : Stmt -> Stmt -> Stmt
   | while : BExp -> Stmt -> Stmt
   | ifthen : BExp -> Stmt -> Stmt
@@ -81,18 +76,6 @@ Inductive Stmt :=
     with Case :=
       | default_case : Stmt -> Case
       | case__ : AExp -> Stmt -> Case.
-
-Inductive Func :=
-  | def_n : string -> list Param -> Stmt -> Func
-  | def_b : string -> list Param -> Stmt -> Func
-  | def_s : string -> list Param -> Stmt -> Func.
-
-Inductive Struct :=
-  | def_struct : string -> list Member -> Struct
-  with Member :=
-    | member_n : string -> Member
-    | member_b : string -> Member
-    | member_s : string -> Member.
 
 Coercion default_a : defaultNat >-> AExp.
 Coercion var_a : string >-> AExp.
@@ -150,17 +133,7 @@ Notation "'nat_' S .' M ::= X" := (assgn_str_n S M X) (at level 80).
 Notation "'bool_' S .' M ::= X" := (assgn_str_b S M X) (at level 80).
 Notation "'str_' S .' M ::= X" := (assgn_str_s S M X) (at level 80).
 
-Notation "'nat_p' X" := (param_n X) (at level 82).
-Notation "'bool_p' X" := (param_b X) (at level 82).
-Notation "'str_p' X" := (param_s X) (at level 82).
-Notation "'nat_f' F ( P0 ',' P1 ',' .. ',' Pn ) { S }" := (def_n F (cons P0(cons P1 .. (cons Pn nil) ..)) S) (at level 81).
-Notation "'bool_f' F ( P0 ',' P1 ',' .. ',' Pn ) { S }" := (def_n F (cons P0(cons P1 .. (cons Pn nil) ..)) S) (at level 81).
-Notation "'str_f' F ( P0 ',' P1 ',' .. ',' Pn ) { S }" := (def_n F (cons P0(cons P1 .. (cons Pn nil) ..)) S) (at level 81).
-
-Notation "'nat_m' X" := (member_n X) (at level 82).
-Notation "'bool_m' X" := (member_b X) (at level 82).
-Notation "'str_m' X" := (member_s X) (at level 82).
-Notation "'struct' S { M0 ';;' M1 ';;' .. ';;' Mn ';;' }" := (def_struct S (cons M0(cons M1 .. (cons Mn nil) ..))) (at level 81).
+Notation "'func_' F '()' { S }" := (def_f F S) (at level 81).
 
 Definition test_stmt :=
   nat_ "test" [100] ::= 1;;
@@ -217,9 +190,16 @@ Definition NStrEnv := string -> string -> nat.
 Definition BStrEnv := string -> string -> bool.
 Definition SStrEnv := string -> string -> string.
 
-Inductive Env :=
-  | env_pack : NEnv -> BEnv -> SEnv -> NArrEnv -> BArrEnv -> SArrEnv -> NStrEnv -> BStrEnv -> SStrEnv -> Env.
+Definition FEnv := string -> Stmt.
 
+Inductive Env :=
+  | env_pack : NEnv -> BEnv -> SEnv -> NArrEnv -> BArrEnv -> SArrEnv -> NStrEnv -> BStrEnv -> SStrEnv -> FEnv -> Env.
+
+Definition FUpdate (env : FEnv) (name_ : string) (stmts : Stmt) : FEnv :=
+  fun name' => if (eqb name_ name')
+               then stmts
+               else (env name').
+ 
 Definition NUpdate (env : NEnv) (var : string) (value : nat) : NEnv :=
   fun var' => if (eqb var' var)
                 then value
@@ -285,7 +265,7 @@ Compute ((BArrUpdate benv_arr_test "testing" 0 false) "testing" 0).
 
 Fixpoint AEval (a : AExp) (env : Env) : nat :=
   match env with
-  | env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv =>
+  | env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv fenv =>
   match a with
     | var_a var => nenv var
     | default_a def_ => match def_ with
@@ -299,13 +279,13 @@ Fixpoint AEval (a : AExp) (env : Env) : nat :=
     | modulo a0 a1 => Nat.modulo (AEval a0 env) (AEval a1 env)
     | arr_a_element arr idx => narrenv arr (AEval idx env)
     | struct_a_member s0 s1 => nstrenv s0 s1
-    | _ => 0
+    | function_a_return name_ => 0
   end
   end.
   
 Fixpoint BEval (b : BExp) (env : Env) : bool :=
   match env with
-    | env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrnev =>
+    | env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrnev fenv =>
   match b with
     | true_b => true
     | false_b => false
@@ -325,13 +305,13 @@ Fixpoint BEval (b : BExp) (env : Env) : bool :=
     | neq_b a0 a1 => negb (Nat.eqb (AEval a0 env) (AEval a1 env))
     | arr_b_element arr idx => barrenv arr (AEval idx env)
     | struct_b_member s0 s1 => bstrenv s0 s1
-    | _ => false
+    | function_b_return name_ => false
   end
   end.
 
 Fixpoint SEval (s : SExp) (env : Env) : string :=
   match env with
-    | env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv =>
+    | env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv fenv =>
   match s with
     | var_s var => senv var
     | default_s def_ => match def_ with
@@ -341,24 +321,24 @@ Fixpoint SEval (s : SExp) (env : Env) : string :=
     | str_concat s0 s1 => (SEval s0 env) ++ (SEval s1 env)
     | arr_s_element arr idx => sarrenv arr (AEval idx env)
     | struct_s_member s0 s1 => sstrenv s0 s1
-    | _ => ""
+    | function_s_return name_ => ""
   end
   end.
-  
+ 
 Fixpoint eval (s : Stmt) (env : Env) (gas : nat) : Env :=
   match gas with
     | 0 => env
     | S gas' => match env with
-      | env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv => match s with
-          | assgn_n var a => env_pack (NUpdate nenv var (AEval a env)) benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv
-          | assgn_b var b => env_pack nenv (BUpdate benv var (BEval b env)) senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv
-          | assgn_s var s => env_pack nenv benv (SUpdate senv var (SEval s env)) narrenv barrenv sarrenv nstrenv bstrenv sstrenv
-          | assgn_arr_n arr idx a => env_pack nenv benv senv (NArrUpdate narrenv arr (AEval idx env) (AEval a env)) barrenv sarrenv nstrenv bstrenv sstrenv
-          | assgn_arr_b arr idx b => env_pack nenv benv senv narrenv (BArrUpdate barrenv arr (AEval idx env) (BEval b env)) sarrenv nstrenv bstrenv sstrenv
-          | assgn_arr_s arr idx s => env_pack nenv benv senv narrenv barrenv (SArrUpdate sarrenv arr (AEval idx env) (SEval s env)) nstrenv bstrenv sstrenv
-          | assgn_str_n strc memb a => env_pack nenv benv senv narrenv barrenv sarrenv (NStrUpdate nstrenv strc memb (AEval a env)) bstrenv sstrenv
-          | assgn_str_b strc memb b => env_pack nenv benv senv narrenv barrenv sarrenv nstrenv (BStrUpdate bstrenv strc memb (BEval b env)) sstrenv
-          | assgn_str_s strc memb s => env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv (SStrUpdate sstrenv strc memb (SEval s env))
+      | env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv fenv => match s with
+          | assgn_n var a => env_pack (NUpdate nenv var (AEval a env)) benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv fenv
+          | assgn_b var b => env_pack nenv (BUpdate benv var (BEval b env)) senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv fenv
+          | assgn_s var s => env_pack nenv benv (SUpdate senv var (SEval s env)) narrenv barrenv sarrenv nstrenv bstrenv sstrenv fenv
+          | assgn_arr_n arr idx a => env_pack nenv benv senv (NArrUpdate narrenv arr (AEval idx env) (AEval a env)) barrenv sarrenv nstrenv bstrenv sstrenv fenv
+          | assgn_arr_b arr idx b => env_pack nenv benv senv narrenv (BArrUpdate barrenv arr (AEval idx env) (BEval b env)) sarrenv nstrenv bstrenv sstrenv fenv
+          | assgn_arr_s arr idx s => env_pack nenv benv senv narrenv barrenv (SArrUpdate sarrenv arr (AEval idx env) (SEval s env)) nstrenv bstrenv sstrenv fenv
+          | assgn_str_n strc memb a => env_pack nenv benv senv narrenv barrenv sarrenv (NStrUpdate nstrenv strc memb (AEval a env)) bstrenv sstrenv fenv
+          | assgn_str_b strc memb b => env_pack nenv benv senv narrenv barrenv sarrenv nstrenv (BStrUpdate bstrenv strc memb (BEval b env)) sstrenv fenv
+          | assgn_str_s strc memb s => env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv (SStrUpdate sstrenv strc memb (SEval s env)) fenv
           | seq s0 s1 => eval s0 (eval s1 env gas') gas'
           | while cond s => if (BEval cond env)
                             then eval (seq s (while cond s)) env gas'
@@ -378,6 +358,7 @@ Fixpoint eval (s : Stmt) (env : Env) (gas : nat) : Env :=
                                                                      else eval (switch_case a0 rest_of_list) env gas'
                                                       end
                                        end
+          | def_f name_ stmts => env_pack nenv benv senv narrenv barrenv sarrenv nstrenv bstrenv sstrenv (FUpdate fenv name_ stmts)
           end
       end
   end.
