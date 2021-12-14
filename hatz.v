@@ -135,32 +135,6 @@ Notation "'str_' S .' M ::= X" := (assgn_str_s S M X) (at level 80).
 
 Notation "'func_' F '()' { S }" := (def_f F S) (at level 81).
 
-Definition test_stmt :=
-  nat_ "test" [100] ::= 1;;
-  nat_ "hatz" ::= get_a "test"[69];;
-  nat_ "test" ::= 1337;;
-  bool_ "test1" ::= true;;
-  str_ "test2" ::= "hatz";;
-  str_ "test2" ::= "test2" +'+' "iaeohfg";;
-
-  while_ ("test" >' 0) {
-    nat_ "test" ::= "test" -' 1;;
-    str_ "test"[2077] ::= "eigfhjao"
-  } ;;
-
-  switch ("test"){
-    case (1) {
-      str_ "test2" ::= get_s "test"[100]
-    }
-    case (1337) {
-      str_ "test2" ::= "ceva"
-    }
-    default {
-      str_ "test2" ::= "altceva"
-    }
-  }
-.
-
 (*Definition test_func :=
   nat_f "test_function" # nat_p "param0", bool_p "param1", str_p "param2" #
   {
@@ -175,7 +149,7 @@ Definition test_struct :=
     nat_m "test" ;;
     bool_m "test1" ;;
     str_m "test2" 
-  }
+  } 
 .*)
 
 Definition NEnv := string -> nat.
@@ -194,6 +168,38 @@ Definition FEnv := string -> Stmt.
 
 Inductive Env :=
   | env_pack : NEnv -> BEnv -> SEnv -> NArrEnv -> BArrEnv -> SArrEnv -> NStrEnv -> BStrEnv -> SStrEnv -> FEnv -> Env.
+
+Definition def_nenv : NEnv :=
+  fun var => 0.
+
+Definition def_benv : BEnv :=
+  fun var => false.
+
+Definition def_senv : SEnv :=
+  fun var => "".
+
+Definition def_narrenv : NArrEnv :=
+  fun var idx => 0.
+
+Definition def_barrenv : BArrEnv :=
+  fun var idx => false.
+
+Definition def_sarrenv : SArrEnv :=
+  fun var idx => "".
+
+Definition def_nstrenv : NStrEnv :=
+  fun var memb => 0.
+
+Definition def_bstrenv : BStrEnv :=
+  fun var memb => false.
+
+Definition def_sstrenv : SStrEnv :=
+  fun var memb => "".
+
+Definition def_fenv : FEnv :=
+  fun name_ => (assgn_n "return" 0).
+
+Definition def_env : Env := env_pack def_nenv def_benv def_senv def_narrenv def_barrenv def_sarrenv def_nstrenv def_bstrenv def_sstrenv def_fenv.
 
 Definition FUpdate (env : FEnv) (name_ : string) (stmts : Stmt) : FEnv :=
   fun name' => if (eqb name_ name')
@@ -362,3 +368,33 @@ Fixpoint eval (s : Stmt) (env : Env) (gas : nat) : Env :=
           end
       end
   end.
+
+Definition test_stmt :=
+  nat_ "test" [100] ::= 1;;
+  nat_ "hatz" ::= get_a "test"[69];;
+  nat_ "test" ::= 1337;;
+  bool_ "test1" ::= true;;
+  str_ "test2" ::= "hatz";;
+  str_ "test2" ::= "test2" +'+' "iaeohfg";;
+
+  while_ ("test" >' 0) {
+    nat_ "test" ::= "test" -' 1;;
+    str_ "test"[2077] ::= "eigfhjao"
+  } ;;
+
+  switch ("test"){
+    case (1) {
+      str_ "test2" ::= get_s "test"[100]
+    }
+    case (1337) {
+      str_ "test2" ::= "ceva"
+    }
+    default {
+      str_ "test2" ::= "altceva"
+    }
+  } ;;
+
+  str_ "return" ::= "haeta"
+.
+
+Compute (SEval (var_s "return") (eval (test_stmt) def_env 100)).
